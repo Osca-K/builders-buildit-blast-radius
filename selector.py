@@ -121,13 +121,16 @@ def main():
     if index_path.exists():
         with gzip.open(index_path,'rt',encoding='utf-8') as f: index=json.load(f)
     by_id={t['id']:t for t in tests}
-    catalog_matches=index is not None and all(s in by_id for s in index['tests'])
+    catalog_matches=index is not None and set(by_id).issubset(index['tests'])
     for patch in sorted((root/'commits').glob('*.patch')):
         if catalog_matches:
             mask=choose(index,patch.read_text(encoding='utf-8'))
             selected=[]
             while mask:
-                bit=mask&-mask;selected.append(by_id[index['tests'][bit.bit_length()-1]]);mask^=bit
+                bit=mask&-mask
+                item=by_id.get(index['tests'][bit.bit_length()-1])
+                if item is not None: selected.append(item)
+                mask^=bit
         else:
             # Correct fallback when the build coverage index is absent/incompatible.
             selected=tests
