@@ -21,7 +21,12 @@ Receiver contexts record inherited dialect flags as well as executed lines.
 Changed functions select all observed callers of the smallest enclosing function;
 module and class edits select the recorded file users.
 
-Public sample validation: 190.943 simulated seconds, zero missed commits.
+The current index also records operand-type observations from the unmodified test
+suite. When a patch only changes `is`/`is not` to `==`/`!=`, tests are removed
+only where every observation at that exact source location proves the comparison
+equivalent. Missing, custom, or conflicting types retain the test.
+
+Public sample validation: 166.156 simulated seconds, zero missed commits.
 Sample answers remain outside the runtime image. Hidden-set performance is
 measured separately by the competition scorer.
 

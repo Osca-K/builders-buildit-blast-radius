@@ -102,6 +102,8 @@ def class_access(cls,name):
     record_receiver(cls)
     return type.__getattribute__(cls,name)
 
+import comparison_types
+comparison_types.install(lambda: context)
 from sqlglot.dialects.dialect import Dialect, _Dialect
 from sqlglot.parser import Parser
 from sqlglot.generator import Generator
@@ -150,6 +152,7 @@ if code not in (0,1) or not ids:
     raise SystemExit(f'Coverage collection failed: {code}, {len(ids)} tests')
 ids=sorted(set(ids));positions={s:i for i,s in enumerate(ids)}
 masks={'test:'+s:1<<i for s,i in positions.items()}
+masks['unscoped']=(1<<len(ids))-1
 owner_masks={}
 for s,p in owners.items(): owner_masks[p]=owner_masks.get(p,0)|(1<<positions[s])
 masks.update({'owner:'+p:m for p,m in owner_masks.items()})
@@ -179,6 +182,15 @@ for p in ROOT.rglob('*.py'):
 result={'tests':ids,'lines':lines,'files':{p:format(m,'x') for p,m in files.items()},
         'owners':{p:format(m,'x') for p,m in owner_masks.items()},'sources':sources,
         'base_exit_code':int(code),'base_commit':'eb11aec4be8cb2122afe713a4816662c3f0fb2fa'}
-with gzip.open('/app/index.json.gz','wt',encoding='utf-8') as f:
+type_masks={}
+for location,pairs in comparison_types.observations.items():
+    output={}
+    for pair,contexts in pairs.items():
+        mask=0
+        for ctx in contexts:mask|=masks.get(ctx,0)
+        if mask:output[pair]=format(mask,'x')
+    if output:type_masks[location]=output
+result['comparison_types']=type_masks
+with gzip.open(os.environ.get('INDEX_OUTPUT','/app/index.json.gz'),'wt',encoding='utf-8') as f:
     json.dump(result,f,separators=(',',':'))
 print(f'Indexed {len(ids)} tests, {len(files)} files',file=sys.stderr)

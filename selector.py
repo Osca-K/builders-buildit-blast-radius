@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from comparison_equivalence import equivalent_tests
 
 HUNK=re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
 
@@ -68,10 +69,12 @@ def choose(index,text):
         paths={p for p in (old,new) if p and p!='/dev/null'}
         if not paths: return all_tests
         source=index['sources'].get(old)
+        neutral=0
         if old==new and source is not None and ch['hunks']:
             try:
                 before=ast.parse(source);after=ast.parse(patched(source,ch))
                 if ast.dump(before)==ast.dump(after): continue
+                neutral=equivalent_tests(before,after,index,old)
             except SyntaxError:
                 # Syntax errors can prevent collection of all importing modules.
                 return all_tests
@@ -81,7 +84,7 @@ def choose(index,text):
         owner=0
         for p in paths: owner|=int(index['owners'].get(p,'0'),16)
         if owner:
-            selected|=owner;continue
+            selected|=owner&~neutral;continue
         lm=index['lines'].get(old,{})
         hit=0
         for n in ch['lines']: hit|=int(lm.get(str(n),'0'),16)
@@ -98,7 +101,7 @@ def choose(index,text):
             # receiver modules, including inherited class-flag accesses.
             users=0
             for p in paths: users|=int(index['files'].get(p,'0'),16)
-            selected|=users or all_tests
+            selected|=(users or all_tests)&~neutral
             continue
         # A changed branch may newly affect callers which did not take that
         # branch on the pristine checkout. Retain its enclosing function users.
@@ -116,7 +119,7 @@ def choose(index,text):
             for p in paths: hit |= int(index['files'].get(p,'0'),16)
 
         if not hit: return all_tests
-        selected|=hit
+        selected|=hit&~neutral
     return selected
 
 def schedule(tests):
