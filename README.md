@@ -21,7 +21,7 @@ Receiver contexts record inherited dialect flags as well as executed lines.
 Changed statements select observed line users and enclosing expression headers;
 uncovered statements fall back to the enclosing function. Replacement additions
 map to the removed lines; pure insertions include both adjacent old lines.
-Mixed class/method edits retain file users. Scalar class-value-only edits can use
+Mixed class/method edits retain file users. Literal class-value-only edits can use
 attribute readers, expanded to inherited declaration modules from pristine classes.
 
 The current index also records operand-type observations from the unmodified test
@@ -29,9 +29,11 @@ suite. When a patch only changes `is`/`is not` to `==`/`!=`, tests are removed
 only where every observation at that exact source location proves the comparison
 equivalent. Missing, custom, or conflicting types retain the test.
 
-Public sample validation: 134.695 simulated seconds, zero missed commits,
-versus 144.829 for submitted commit 6f29d06. Nine selector regression tests cover
+Public sample validation: 122.525 simulated seconds, zero missed commits,
+versus 134.695 for submitted commit e4d3675. Twelve selector regression tests cover
 replacement/insertion boundaries, mixed edits, missing maps and inherited flags.
+Literal negative numbers and containers use attribute readers; calls and invalid
+literal containers retain file users.
 Sample answers remain outside the runtime image. Hidden-set performance is
 measured separately by the competition scorer.
 

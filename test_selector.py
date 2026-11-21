@@ -28,6 +28,16 @@ class SelectionSafety(unittest.TestCase):
     def test_mixed_flag_and_method_edit_keeps_both(self):
         self.assertEqual(self.select(SOURCE.replace('True', 'False').replace('return 1', 'return 2')), 3)
 
+    def test_negative_and_container_literals_select_readers(self):
+        for value in ('-2', '{"x": (16, 2), "y": [1, 3]}', '{1, 2}', '[]'):
+            self.assertEqual(self.select(SOURCE.replace('True', value)), 1)
+
+    def test_invalid_literal_container_keeps_all_users(self):
+        self.assertEqual(self.select(SOURCE.replace('True', '{[]: 1}')), 3)
+
+    def test_container_expression_with_call_keeps_all_users(self):
+        self.assertEqual(self.select(SOURCE.replace('True', '{"x": unsafe()}')), 3)
+
     def test_new_import_side_effect_keeps_file_users(self):
         self.assertEqual(self.select(SOURCE.replace('True', 'unknown_function()')), 3)
 

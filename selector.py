@@ -18,14 +18,20 @@ def source_tree(source):
     return ast.parse(source)
 
 def changed_class_constants(before,after):
-    """Only prune attribute users when every AST edit is a scalar class value."""
+    """Only prune attribute users when every AST edit is a literal class value."""
     names=set()
+    def literal(node):
+        try:
+            ast.literal_eval(node)
+            return True
+        except (ValueError,TypeError,SyntaxError,RecursionError):
+            return False
     def normalize(tree):
         tree=copy.deepcopy(tree)
         for cls in ast.walk(tree):
             if not isinstance(cls,ast.ClassDef): continue
             for node in cls.body:
-                if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and isinstance(node.value,ast.Constant):
+                if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and literal(node.value):
                     names.add(node.targets[0].id)
                     node.value=ast.Constant(value=None)
         return ast.dump(tree)
