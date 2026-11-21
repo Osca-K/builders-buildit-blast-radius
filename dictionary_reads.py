@@ -6,9 +6,16 @@ observations={}
 origins=set()
 context=lambda:''
 _json_wrapped=False
+_key_tokens={}
 
 
 def key_token(key):
+    if type(key) is str:
+        token=_key_tokens.get(key)
+        if token is None:
+            token='key:'+json.dumps(key,ensure_ascii=True,separators=(',',':'))
+            _key_tokens[key]=token
+        return token
     try:return 'key:'+json.dumps(key,ensure_ascii=True,separators=(',',':'))
     except (TypeError,ValueError):return '*'
 

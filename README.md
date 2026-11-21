@@ -29,8 +29,8 @@ suite. When a patch only changes `is`/`is not` to `==`/`!=`, tests are removed
 only where every observation at that exact source location proves the comparison
 equivalent. Missing, custom, or conflicting types retain the test.
 
-Public sample validation: 117.638 simulated seconds, zero missed commits,
-versus 122.525 for submitted commit dafc288. Twenty-four dependency tracing and selector regression tests cover
+Public sample validation: 108.560 simulated seconds, zero missed commits,
+versus 117.638 for submitted commit 42a08af. Twenty-seven dependency tracing and selector regression tests cover
 replacement/insertion boundaries, mixed edits, missing maps and inherited flags.
 Literal negative numbers and containers use attribute readers; calls and invalid
 literal containers retain file users.
@@ -44,8 +44,16 @@ line, resource and operand-type coverage unchanged. Only string-to-boolean schem
 dictionaries in expression modules can use this map; mixed edits and invalid
 schema shapes retain the conservative import dependency fallback. Reproduce the
 supplementary collection with `docker build -f Dockerfile.schemas .`.
-Experimental dictionary key tracing is disabled in this release pending further
-checks for consumers implemented in C.
+Literal class dictionary edits with unchanged key order can also use observed
+value-key dependencies from the same pristine suite. Whole-dictionary reads,
+copies consumed by external code, explicit dict base-method calls, pickle and JSON
+serialization retain wildcard dependencies. Mapping expansion records each value
+read. Arguments escaping to consumers outside the instrumented pristine Python
+source conservatively mark every contained observed dictionary. Only a complete
+successful pristine run with those external-call guards enables this refinement;
+key additions, removals, reordering, unknown origins and mixed edits retain the
+previous fallback. The pinned source, tests, existing coverage, comparison types
+and class-schema dependency maps remain unchanged.
 
 Run: `docker run --rm --network none --read-only --user nobody -v DATA:/data:ro blast-radius`
 
