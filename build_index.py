@@ -9,6 +9,8 @@ import coverage
 import pytest
 import concurrent.futures
 import pickle
+import functools
+import types
 
 # Trace worker work in the same process during map generation. The pristine
 # tests use pools for throughput, and coverage contexts must include that work.
@@ -62,6 +64,62 @@ def audit(event,args):
             if ctx: accesses.setdefault(p,set()).add(ctx)
 
 sys.addaudithook(audit)
+
+# Inherited methods often read flags declared in a dialect module without
+# executing any line there. Record the module of the actual receiver as a
+# dependency, including class-level Dialect registry accesses. Values and
+# behavior are left intact; this instrumentation runs only on pristine source.
+recorded_receivers=set()
+receiver_paths={}
+
+def record_receiver(cls):
+    if not context: return
+    receiver_id=id(cls)
+    key=(context,receiver_id)
+    if key in recorded_receivers: return
+    recorded_receivers.add(key)
+    if receiver_id in receiver_paths:
+        path=receiver_paths[receiver_id]
+        if path: accesses.setdefault(path,set()).add(context)
+        return
+    module=type.__getattribute__(cls,'__module__')
+    path=None
+    if module.startswith('sqlglot'):
+        path=module.replace('.','/')+'.py'
+        if not (ROOT/path).is_file(): path=module.replace('.','/')+'/__init__.py'
+        if not (ROOT/path).is_file(): path=None
+    receiver_paths[receiver_id]=path
+    if path: accesses.setdefault(path,set()).add(context)
+
+def record_operation(fn):
+    @functools.wraps(fn)
+    def wrapped(self,*args,**kwargs):
+        record_receiver(type(self))
+        return fn(self,*args,**kwargs)
+    return wrapped
+
+def class_access(cls,name):
+    record_receiver(cls)
+    return type.__getattribute__(cls,name)
+
+from sqlglot.dialects.dialect import Dialect, _Dialect
+from sqlglot.parser import Parser
+from sqlglot.generator import Generator
+from sqlglot.tokens import Tokenizer
+for base in (Dialect,Parser,Generator,Tokenizer):
+    # Record public entry points and construction, rather than imposing a hook
+    # on every internal attribute read in the parser's hottest loops.
+    for name in ('__init__','parse','parse_into','generate','tokenize'):
+        fn=vars(base).get(name)
+        if isinstance(fn,types.FunctionType):setattr(base,name,record_operation(fn))
+get_or_raise=vars(Dialect)['get_or_raise'].__func__
+@functools.wraps(get_or_raise)
+def recorded_dialect(cls,*args,**kwargs):
+    result=get_or_raise(cls,*args,**kwargs)
+    record_receiver(type(result))
+    return result
+Dialect.get_or_raise=classmethod(recorded_dialect)
+_Dialect.__getattribute__=class_access
 
 class Plugin:
     def pytest_collection_modifyitems(self,items):

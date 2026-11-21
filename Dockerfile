@@ -1,11 +1,5 @@
 FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
-WORKDIR /opt/sqlglot
-RUN python -c "import urllib.request,tarfile,io; r=urllib.request.urlopen('https://github.com/tobymao/sqlglot/archive/eb11aec4be8cb2122afe713a4816662c3f0fb2fa.tar.gz'); a=tarfile.open(fileobj=io.BytesIO(r.read())); a.extractall('/opt',filter='data')"
-RUN python -c "from pathlib import Path; import shutil; src=Path('/opt/sqlglot-eb11aec4be8cb2122afe713a4816662c3f0fb2fa'); [shutil.move(str(p),str(Path('/opt/sqlglot')/p.name)) for p in src.iterdir()]"
-COPY requirements.lock /app/requirements.lock
-RUN pip install --no-cache-dir -r /app/requirements.lock coverage==7.10.6
-COPY build_index.py selector.py /app/
-ENV SKIP_INTEGRATION=0 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/sqlglot
-RUN python /app/build_index.py
 WORKDIR /app
+COPY selector.py index.json.gz ./
+ENV PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "/app/selector.py"]

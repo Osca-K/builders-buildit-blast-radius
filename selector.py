@@ -94,13 +94,27 @@ def choose(index,text):
                 module_level=any(not any(a<=n<=b for a,b in functions) for n in ch['lines'])
             except SyntaxError: module_level=True
         if module_level:
-            # Class flags and registries can be consumed by inherited code in
-            # other modules without executing a line in the defining module.
-            selected|=all_tests
+            # The pristine build records actual dialect/parser/generator
+            # receiver modules, including inherited class-flag accesses.
+            users=0
+            for p in paths: users|=int(index['files'].get(p,'0'),16)
+            selected|=users or all_tests
             continue
         # A changed branch may newly affect callers which did not take that
-        # branch on the pristine checkout. Retain all observed file callers.
-        for p in paths: hit|=int(index['files'].get(p,'0'),16)
+        # branch on the pristine checkout. Retain its enclosing function users.
+
+        if source and old and old.endswith('.py'):
+            tree = ast.parse(source)
+            funcs = [node for node in ast.walk(tree) if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))]
+            for n in ch['lines']:
+                enclosing = [node for node in funcs if node.lineno <= n <= node.end_lineno]
+                if enclosing:
+                    node = min(enclosing,key=lambda node: node.end_lineno-node.lineno)
+                    for line in range(node.lineno,node.end_lineno+1):
+                        hit |= int(lm.get(str(line),'0'),16)
+        else:
+            for p in paths: hit |= int(index['files'].get(p,'0'),16)
+
         if not hit: return all_tests
         selected|=hit
     return selected

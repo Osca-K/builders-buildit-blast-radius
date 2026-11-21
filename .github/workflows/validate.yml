@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Build pristine-source coverage index
+      - name: Build selector with reproducible pristine-source coverage index
         run: timeout 600 docker build -t blast-radius .
       - name: Select public sample tests under scorer limits
         run: /usr/bin/time -v docker run --rm --network none --cpus 2 --memory 4g --memory-swap 4g --read-only --tmpfs /tmp:rw,size=64m --user nobody -e HOME=/tmp -v "$PWD/sample/tests.json:/data/tests.json:ro" -v "$PWD/sample/commits:/data/commits:ro" blast-radius > predictions.jsonl

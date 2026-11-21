@@ -13,7 +13,19 @@ only by the external validation scorer, never copied into the image or read by s
 
 Build: `docker build -t blast-radius .`
 
+The committed index is derived solely from the pristine pinned source at
+eb11aec4be8cb2122afe713a4816662c3f0fb2fa. Reproduce it with
+`docker build -f Dockerfile.training -t blast-radius-training .`.
+The training run passed 1,620 tests and 25,440 subtests, with one expected skip.
+Receiver contexts record inherited dialect flags as well as executed lines.
+Changed functions select all observed callers of the smallest enclosing function;
+module and class edits select the recorded file users.
+
+Public sample validation: 190.943 simulated seconds, zero missed commits.
+Sample answers remain outside the runtime image. Hidden-set performance is
+measured separately by the competition scorer.
+
 Run: `docker run --rm --network none --read-only --user nobody -v DATA:/data:ro blast-radius`
 
 If the generated index is absent or catalog-incompatible, runtime selects all tests.
-The build intentionally fails if coverage collection cannot complete.
+The reproduction build fails if coverage collection cannot complete.
