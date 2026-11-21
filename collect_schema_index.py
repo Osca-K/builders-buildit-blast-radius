@@ -13,6 +13,7 @@ os.chdir(ROOT)
 sys.path.insert(0,str(ROOT))
 os.environ['SKIP_INTEGRATION']='0'
 os.environ['RWX_SCHEMA_ONLY']='1'
+PRIMITIVE_ONLY=os.environ.get('RWX_PRIMITIVE_ONLY')=='1'
 
 class CoveragePool(concurrent.futures.ThreadPoolExecutor):
     def __init__(self,max_workers=None,mp_context=None,initializer=None,initargs=(),**kwargs):
@@ -58,12 +59,16 @@ class Plugin:
         try:return (yield)
         finally:context=previous
 
-import comparison_types
-import class_attributes
-import dictionary_reads
-class_attributes.install(lambda:context)
-dictionary_reads.install(lambda:context)
-comparison_types.install(lambda:context)
+if PRIMITIVE_ONLY:
+    import primitive_comparisons
+    primitive_comparisons.install(lambda:context)
+else:
+    import comparison_types
+    import class_attributes
+    import dictionary_reads
+    class_attributes.install(lambda:context)
+    dictionary_reads.install(lambda:context)
+    comparison_types.install(lambda:context)
 
 with gzip.open('/app/base-index.json.gz','rt',encoding='utf-8') as handle:index=json.load(handle)
 code=pytest.main(['tests','-q','-p','no:cacheprovider'],plugins=[Plugin()])
@@ -79,14 +84,22 @@ def context_mask(contexts):
     for ctx in contexts:value|=masks.get(ctx,0)
     return format(value,'x')
 
-index['class_attributes']={key:context_mask(contexts) for key,contexts in class_attributes.observations.items()}
-index['class_attribute_complete']=complete
-index['class_schema_paths']=[p for p in index['sources'] if p.startswith('sqlglot/expressions/')]
-index['dictionary_reads']={origin:{key:context_mask(contexts) for key,contexts in keys.items()}
-                           for origin,keys in dictionary_reads.observations.items()}
-index['dictionary_origins']=sorted(dictionary_reads.origins)
-index['dictionary_reads_complete']=complete
-index['dictionary_external_calls_traced']=complete
-index['schema_collection_exit_code']=int(code)
+if PRIMITIVE_ONLY:
+    index['comparison_values']={location:{key:context_mask(contexts) for key,contexts in pairs.items()}
+                                for location,pairs in primitive_comparisons.observations.items()}
+    index['comparison_value_unknown']={location:context_mask(contexts) for location,contexts in primitive_comparisons.unknown.items()}
+    index['comparison_value_locations']=sorted(primitive_comparisons.locations)
+    index['comparison_values_complete']=complete
+    index['comparison_collection_exit_code']=int(code)
+else:
+    index['class_attributes']={key:context_mask(contexts) for key,contexts in class_attributes.observations.items()}
+    index['class_attribute_complete']=complete
+    index['class_schema_paths']=[p for p in index['sources'] if p.startswith('sqlglot/expressions/')]
+    index['dictionary_reads']={origin:{key:context_mask(contexts) for key,contexts in keys.items()}
+                               for origin,keys in dictionary_reads.observations.items()}
+    index['dictionary_origins']=sorted(dictionary_reads.origins)
+    index['dictionary_reads_complete']=complete
+    index['dictionary_external_calls_traced']=complete
+    index['schema_collection_exit_code']=int(code)
 with gzip.open('/app/index.json.gz','wt',encoding='utf-8') as handle:json.dump(index,handle,separators=(',',':'))
-print(f'Pristine schema collection complete={complete}, tests={len(ids)}, class declarations={len(index["class_attributes"])}, dictionaries={len(index["dictionary_origins"])}',file=sys.stderr)
+print(f'Pristine supplemental collection complete={complete}, tests={len(ids)}, primitive={PRIMITIVE_ONLY}',file=sys.stderr)

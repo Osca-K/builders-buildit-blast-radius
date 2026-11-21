@@ -4,7 +4,7 @@ RUN python -c "import urllib.request,tarfile,io; r=urllib.request.urlopen('https
 RUN python -c "from pathlib import Path; import shutil; src=Path('/opt/sqlglot-eb11aec4be8cb2122afe713a4816662c3f0fb2fa'); [shutil.move(str(p),str(Path('/opt/sqlglot')/p.name)) for p in src.iterdir()]"
 COPY requirements.lock /app/requirements.lock
 RUN pip install --no-cache-dir -r /app/requirements.lock coverage==7.10.6
-COPY build_index.py selector.py comparison_types.py comparison_equivalence.py attribute_owners.py class_attributes.py dictionary_reads.py /app/
+COPY build_index.py selector.py comparison_types.py comparison_equivalence.py comparison_value_equivalence.py primitive_comparisons.py attribute_owners.py class_attributes.py dictionary_reads.py /app/
 ENV SKIP_INTEGRATION=0 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/sqlglot
 RUN python /app/build_index.py
 WORKDIR /app

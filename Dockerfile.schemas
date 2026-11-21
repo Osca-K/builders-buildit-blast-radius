@@ -5,7 +5,7 @@ RUN python -c "from pathlib import Path; import shutil; src=Path('/opt/sqlglot-e
 COPY requirements.lock /app/requirements.lock
 RUN pip install --no-cache-dir -r /app/requirements.lock
 COPY index.json.gz /app/base-index.json.gz
-COPY collect_schema_index.py selector.py comparison_types.py comparison_equivalence.py class_attributes.py dictionary_reads.py /app/
+COPY collect_schema_index.py selector.py comparison_types.py comparison_equivalence.py comparison_value_equivalence.py primitive_comparisons.py class_attributes.py dictionary_reads.py /app/
 ENV SKIP_INTEGRATION=0 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/sqlglot
 RUN python /app/collect_schema_index.py
 WORKDIR /app

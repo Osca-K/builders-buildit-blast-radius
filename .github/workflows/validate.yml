@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check replacement, insertion and mixed-edit selection
-        run: python -m unittest test_selector test_class_attributes test_dictionary_reads
+        run: python -m unittest test_selector test_class_attributes test_dictionary_reads test_comparison_values
       - name: Build selector with reproducible pristine-source coverage index
         run: timeout 600 docker build -t blast-radius .
       - name: Select public sample tests under scorer limits

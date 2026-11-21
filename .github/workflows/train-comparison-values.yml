@@ -1,0 +1,25 @@
+name: Collect pristine primitive comparison inputs
+on: [workflow_dispatch]
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check comparison equivalence safety
+        run: python -m unittest test_selector test_class_attributes test_dictionary_reads test_comparison_values
+      - name: Collect only from unmodified pinned source
+        run: timeout 900 docker build --progress plain -f Dockerfile.comparisons -t blast-values .
+      - name: Export generated pristine index
+        run: docker run --rm --network none --read-only --user nobody --entrypoint cat blast-values /app/index.json.gz > value-index.json.gz
+      - name: Select public sample under runtime constraints
+        run: /usr/bin/time -v docker run --rm --network none --cpus 2 --memory 4g --memory-swap 4g --read-only --tmpfs /tmp:rw,size=64m --user nobody -e HOME=/tmp -v "$PWD/sample/tests.json:/data/tests.json:ro" -v "$PWD/sample/commits:/data/commits:ro" blast-values > value-predictions.jsonl
+      - name: Validate sample externally
+        run: python score.py sample sample/answers.json value-predictions.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: primitive-comparison-index
+          path: |
+            value-index.json.gz
+            value-predictions.jsonl

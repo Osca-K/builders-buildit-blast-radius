@@ -10,6 +10,7 @@ import sys
 import copy
 from functools import lru_cache
 from comparison_equivalence import equivalent_tests
+from comparison_value_equivalence import equivalent_value_tests
 
 HUNK=re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
 
@@ -182,7 +183,7 @@ def choose(index,text):
             try:
                 before=source_tree(source);after=ast.parse(patched(source,ch))
                 if ast.dump(before)==ast.dump(after): continue
-                neutral=equivalent_tests(before,after,index,old)
+                neutral=equivalent_tests(before,after,index,old)|equivalent_value_tests(before,after,index,old)
             except SyntaxError:
                 # Syntax errors can prevent collection of all importing modules.
                 return all_tests
