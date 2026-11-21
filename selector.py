@@ -48,6 +48,29 @@ def changed_class_constants(before,after):
             if name in names and old.get((node.lineno,name))!=ast.dump(node.value): changed.add(name)
     return changed
 
+def changed_expression_schemas(before,after):
+    """Locate exact literal arg_types declarations, retaining mixed-edit fallback."""
+    if changed_class_constants(before,after) != {'arg_types'}:
+        return None
+    def schemas(tree):
+        found={}
+        def walk(body,prefix=''):
+            for cls in body:
+                if not isinstance(cls,ast.ClassDef):continue
+                qualname=prefix+cls.name
+                for node in cls.body:
+                    if (isinstance(node,ast.Assign) and len(node.targets)==1
+                            and isinstance(node.targets[0],ast.Name)
+                            and node.targets[0].id=='arg_types'):
+                        if qualname in found:return False
+                        found[qualname]=ast.dump(node.value)
+                if walk(cls.body,qualname+'.') is False:return False
+            return True
+        return found if walk(tree.body) else None
+    old,new=schemas(before),schemas(after)
+    if old is None or new is None or old.keys()!=new.keys():return None
+    return {name for name in old if old[name]!=new[name]}
+
 def path_name(value):
     value=value.split('\t',1)[0]
     if value.startswith('"'):
@@ -141,6 +164,18 @@ def choose(index,text):
                 module_level=any(not any(a<=n<=b for a,b in functions) for n in ch['lines'])
             except SyntaxError: module_level=True
         if module_level:
+            # Expression schemas derive required_args during class creation.
+            # The pristine schema trace maps both direct and derived reads to
+            # their exact declaring class; a complete map can represent no reads.
+            schemas=(changed_expression_schemas(before,after)
+                     if before is not None and after is not None
+                     and index.get('class_attribute_complete') else None)
+            if schemas:
+                users=0
+                for qualname in schemas:
+                    users|=int(index.get('class_attributes',{}).get(f'{old}:{qualname}:arg_types','0'),16)
+                selected|=users&~neutral
+                continue
             # Class constants are executed at import, so line coverage selects
             # every importer. Attribute tracing identifies the tests that
             # actually read the changed constant.

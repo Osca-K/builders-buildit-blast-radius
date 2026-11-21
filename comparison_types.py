@@ -53,6 +53,23 @@ def compare(location, op, left, right):
 class Rewrite(ast.NodeTransformer):
     def __init__(self, filename):
         self.filename = filename
+        self.function = ''
+    def visit_FunctionDef(self, node):
+        previous = self.function
+        self.function = node.name
+        self.generic_visit(node)
+        self.function = previous
+        return node
+    visit_AsyncFunctionDef = visit_FunctionDef
+    def visit_Attribute(self, node):
+        self.generic_visit(node)
+        if not isinstance(node.ctx, ast.Load) or node.attr not in ('arg_types', 'required_args'):
+            return node
+        derived = (self.filename == 'sqlglot/expressions/core.py'
+                   and self.function == '__init_subclass__'
+                   and node.attr == 'arg_types')
+        return ast.copy_location(ast.Call(func=ast.Name(id='_rwx_schema_read', ctx=ast.Load()),
+            args=[node.value, ast.Constant(node.attr), ast.Constant(derived)], keywords=[]), node)
     def visit_Compare(self, node):
         self.generic_visit(node)
         if len(node.ops) != 1 or type(node.ops[0]).__name__ not in _operators:
@@ -74,6 +91,7 @@ class Loader(importlib.machinery.SourceFileLoader):
         while pos < len(tree.body) and isinstance(tree.body[pos], ast.ImportFrom) and tree.body[pos].module == '__future__':
             pos += 1
         tree.body.insert(pos, ast.ImportFrom(module='comparison_types', names=[ast.alias(name='compare', asname='_rwx_compare')], level=0))
+        tree.body.insert(pos, ast.ImportFrom(module='class_attributes', names=[ast.alias(name='read', asname='_rwx_schema_read')], level=0))
         return compile(ast.fix_missing_locations(tree), path, 'exec')
 
 class Finder(importlib.abc.MetaPathFinder):

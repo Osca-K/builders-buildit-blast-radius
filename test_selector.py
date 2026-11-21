@@ -76,5 +76,31 @@ class SelectionSafety(unittest.TestCase):
         finally:
             del sys.modules[base_module.__name__],sys.modules[child_module.__name__]
 
+    def test_expression_schema_uses_exact_declaring_class(self):
+        source='class A:\n    arg_types = {"x": True}\nclass B:\n    arg_types = {"y": True}\n'
+        changed=source.replace('"x": True','"x": False')
+        index=self.index()
+        index['sources']={'dialect.py':source}
+        index['class_attribute_complete']=True
+        index['class_attributes']={'dialect.py:A:arg_types':'1','dialect.py:B:arg_types':'2'}
+        patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
+                                         fromfile='a/dialect.py',tofile='b/dialect.py'))
+        self.assertEqual(choose(index,patch),1)
+        index['class_attributes']={}
+        self.assertEqual(choose(index,patch),0)
+        index['class_attribute_complete']=False
+        self.assertEqual(choose(index,patch),3)
+
+    def test_expression_schema_mixed_method_edit_keeps_file_users(self):
+        source=SOURCE.replace('FLAG = True','arg_types = {"x": True}')
+        changed=source.replace('"x": True','"x": False').replace('return 1','return 2')
+        index=self.index()
+        index['sources']={'dialect.py':source}
+        index['class_attribute_complete']=True
+        index['class_attributes']={'dialect.py:Dialect:arg_types':'1'}
+        patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
+                                         fromfile='a/dialect.py',tofile='b/dialect.py'))
+        self.assertEqual(choose(index,patch),3)
+
 if __name__ == '__main__':
     unittest.main()

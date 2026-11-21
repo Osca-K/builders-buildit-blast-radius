@@ -116,6 +116,8 @@ def instance_access(self,name):
     return object.__getattribute__(self,name)
 
 import comparison_types
+import class_attributes
+class_attributes.install(lambda: context)
 comparison_types.install(lambda: context)
 from sqlglot.dialects.dialect import Dialect, _Dialect
 from sqlglot.parser import Parser
@@ -213,6 +215,13 @@ for location,pairs in comparison_types.observations.items():
         if mask:output[pair]=format(mask,'x')
     if output:type_masks[location]=output
 result['comparison_types']=type_masks
+class_masks={}
+for key,contexts in class_attributes.observations.items():
+    mask=0
+    for ctx in contexts:mask|=masks.get(ctx,0)
+    if mask:class_masks[key]=format(mask,'x')
+result['class_attributes']=class_masks
+result['class_attribute_complete']=int(code)==0
 with gzip.open(os.environ.get('INDEX_OUTPUT','/app/index.json.gz'),'wt',encoding='utf-8') as f:
     json.dump(result,f,separators=(',',':'))
 print(f'Indexed {len(ids)} tests, {len(files)} files',file=sys.stderr)
