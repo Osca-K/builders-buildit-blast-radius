@@ -7,6 +7,16 @@ from pathlib import Path
 import sys
 import coverage
 import pytest
+import concurrent.futures
+
+# Trace worker work in the same process during map generation. The pristine
+# tests use pools for throughput, and coverage contexts must include that work.
+# Keep this build-only: runtime selection never executes the patched tests.
+class CoveragePool(concurrent.futures.ThreadPoolExecutor):
+    def __init__(self, max_workers=None, mp_context=None, initializer=None, initargs=(), **kwargs):
+        super().__init__(max_workers=2, initializer=initializer, initargs=initargs)
+
+concurrent.futures.ProcessPoolExecutor=CoveragePool
 
 ROOT=Path('/opt/sqlglot')
 os.chdir(ROOT)
