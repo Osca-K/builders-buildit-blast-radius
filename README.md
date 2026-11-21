@@ -29,13 +29,23 @@ suite. When a patch only changes `is`/`is not` to `==`/`!=`, tests are removed
 only where every observation at that exact source location proves the comparison
 equivalent. Missing, custom, or conflicting types retain the test.
 
-Public sample validation: 122.525 simulated seconds, zero missed commits,
-versus 134.695 for submitted commit e4d3675. Twelve selector regression tests cover
+Public sample validation: 117.638 simulated seconds, zero missed commits,
+versus 122.525 for submitted commit dafc288. Twenty-four dependency tracing and selector regression tests cover
 replacement/insertion boundaries, mixed edits, missing maps and inherited flags.
 Literal negative numbers and containers use attribute readers; calls and invalid
 literal containers retain file users.
 Sample answers remain outside the runtime image. Hidden-set performance is
 measured separately by the competition scorer.
+
+A supplementary pristine run observes expression `arg_types` declarations and
+derived `required_args` reads, including inherited declarations. It passed all
+1,620 tests and 25,440 subtests (one expected skip) and keeps the existing pristine
+line, resource and operand-type coverage unchanged. Only string-to-boolean schema
+dictionaries in expression modules can use this map; mixed edits and invalid
+schema shapes retain the conservative import dependency fallback. Reproduce the
+supplementary collection with `docker build -f Dockerfile.schemas .`.
+Experimental dictionary key tracing is disabled in this release pending further
+checks for consumers implemented in C.
 
 Run: `docker run --rm --network none --read-only --user nobody -v DATA:/data:ro blast-radius`
 
