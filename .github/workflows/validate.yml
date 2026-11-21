@@ -1,5 +1,8 @@
 name: Validate blast radius
 on: [push, workflow_dispatch]
+concurrency:
+  group: blast-radius-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: ubuntu-latest

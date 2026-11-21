@@ -8,6 +8,7 @@ import sys
 import coverage
 import pytest
 import concurrent.futures
+import pickle
 
 # Trace worker work in the same process during map generation. The pristine
 # tests use pools for throughput, and coverage contexts must include that work.
@@ -15,6 +16,16 @@ import concurrent.futures
 class CoveragePool(concurrent.futures.ThreadPoolExecutor):
     def __init__(self, max_workers=None, mp_context=None, initializer=None, initargs=(), **kwargs):
         super().__init__(max_workers=2, initializer=initializer, initargs=initargs)
+
+    def submit(self, fn, /, *args, **kwargs):
+        # Process pools serialize both requests and results. Preserving that
+        # behavior is essential: sqlglot expressions serialize through serde.
+        fn,args,kwargs=pickle.loads(pickle.dumps((fn,args,kwargs)))
+        return super().submit(self.transport,fn,args,kwargs)
+
+    @staticmethod
+    def transport(fn,args,kwargs):
+        return pickle.loads(pickle.dumps(fn(*args,**kwargs)))
 
 concurrent.futures.ProcessPoolExecutor=CoveragePool
 
