@@ -315,20 +315,27 @@ def main():
     if index_path.exists():
         with gzip.open(index_path,'rt',encoding='utf-8') as f: index=json.load(f)
     by_id={t['id']:t for t in tests}
+    probes=None
+    if os.environ.get('PROBE_MODE','off')!='off':
+        from runtime_probe import Probes
+        probes=Probes()
     catalog_matches=index is not None and set(by_id).issubset(index['tests'])
     for patch in sorted((root/'commits').glob('*.patch')):
         if catalog_matches:
-            mask=choose(index,patch.read_text(encoding='utf-8'))
+            patch_text=patch.read_text(encoding='utf-8')
+            mask=choose(index,patch_text)
             selected=[]
             while mask:
                 bit=mask&-mask
                 item=by_id.get(index['tests'][bit.bit_length()-1])
                 if item is not None: selected.append(item)
                 mask^=bit
+            if probes is not None:selected=probes.filter(index,patch_text,selected)
         else:
             # Correct fallback when the build coverage index is absent/incompatible.
             selected=tests
         print(json.dumps({'commit':patch.stem,'workers':schedule(selected)},separators=(',',':')))
     if not catalog_matches: print('Using all-tests fallback: no compatible coverage index',file=sys.stderr)
+    if probes is not None:probes.finish()
 
 if __name__=='__main__': main()

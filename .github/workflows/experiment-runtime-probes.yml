@@ -1,0 +1,28 @@
+name: Measure bounded runtime pytest probes
+on: [workflow_dispatch]
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build exact pinned source and pytest environment
+        run: timeout 600 docker build --progress plain -f Dockerfile.probes -t blast-probes .
+      - name: Verify failed subtests and incomplete collection handling
+        run: docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m --user nobody --entrypoint python -v "$PWD:/checks:ro" -w /checks blast-probes -m unittest test_probe_worker
+      - name: Measure source-copy size and full long-test CPU
+        run: docker run --rm --network none --cpus 2 --memory 4g --memory-swap 4g --read-only --tmpfs /tmp:rw,size=64m --user nobody -e HOME=/tmp --entrypoint python blast-probes -c "import os,sys,json,resource,subprocess,pathlib; p=pathlib.Path('/tmp/rwx-request.json');p.write_text(json.dumps({'tests':['tests/test_executor.py::TestExecutor::test_execute_tpcds']}));r=subprocess.run([sys.executable,'/app/probe_worker.py',str(p),'/tmp/rwx-report.json'],cwd='/opt/sqlglot',env=dict(os.environ,PYTHONPATH='/opt/sqlglot',PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'));u=resource.getrusage(resource.RUSAGE_CHILDREN);print('LONG_PROBE',u.ru_utime+u.ru_stime,pathlib.Path('/tmp/rwx-report.json').read_text())"
+      - name: Run bounded probes on public patches
+        run: docker run --rm --network none --cpus 2 --memory 4g --memory-swap 4g --read-only --tmpfs /tmp:rw,size=64m --user nobody -e HOME=/tmp -e PROBE_MODE=mixed -v "$PWD/sample/tests.json:/data/tests.json:ro" -v "$PWD/sample/commits:/data/commits:ro" --entrypoint python blast-probes -c "import runpy,resource,sys,json;runpy.run_path('/app/selector.py',run_name='__main__');a=resource.getrusage(resource.RUSAGE_SELF);b=resource.getrusage(resource.RUSAGE_CHILDREN);print('CPU_USAGE='+json.dumps({'total':a.ru_utime+a.ru_stime+b.ru_utime+b.ru_stime}),file=sys.stderr)" > probe-predictions.jsonl 2> probe-runtime.txt
+      - name: Validate sample externally
+        run: python score.py sample sample/answers.json probe-predictions.jsonl
+      - name: Show measured Linux CPU and individual probe timings
+        if: always()
+        run: cat probe-runtime.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-probe-experiment
+          path: |
+            probe-predictions.jsonl
+            probe-runtime.txt
