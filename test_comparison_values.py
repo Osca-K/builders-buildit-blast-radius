@@ -1,5 +1,6 @@
 import ast
 import json
+import difflib
 import unittest
 import primitive_comparisons as trace
 from comparison_value_equivalence import equivalent_value_tests
@@ -66,6 +67,21 @@ class ComparisonValues(unittest.TestCase):
     def test_nonfinite_large_or_mutable_values_remain_unknown(self):
         for value in (float('nan'),float('inf'),1<<80,'x'*65,[1,2],{'a':1},(1,[2])):
             self.assertIsNone(trace.pack(value))
+
+    def test_selector_retains_every_boundary_and_unknown_test(self):
+        from selector import choose
+        before='def f(value):\n    return value < 2\n'
+        after=before.replace('< 2','<= 2')
+        index=self.index([('Lt',1,2,True,'1'),('Lt',2,2,False,'2')],unknown='4')
+        node=next(node for node in ast.walk(ast.parse(before)) if isinstance(node,ast.Compare))
+        location=f'x.py:{node.lineno}:{node.col_offset}'
+        index['comparison_value_locations']=[location]
+        index['comparison_values'][location]=index['comparison_values'].pop('x.py:1:0')
+        index['comparison_value_unknown'][location]=index['comparison_value_unknown'].pop('x.py:1:0')
+        index.update(sources={'x.py':before},owners={},lines={'x.py':{'2':'7'}},files={'x.py':'7'})
+        patch=''.join(difflib.unified_diff(before.splitlines(True),after.splitlines(True),
+                                         fromfile='a/x.py',tofile='b/x.py'))
+        self.assertEqual(choose(index,patch),6)
 
 
 if __name__=='__main__':unittest.main()

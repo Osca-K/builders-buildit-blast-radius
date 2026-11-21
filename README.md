@@ -29,8 +29,8 @@ suite. When a patch only changes `is`/`is not` to `==`/`!=`, tests are removed
 only where every observation at that exact source location proves the comparison
 equivalent. Missing, custom, or conflicting types retain the test.
 
-Public sample validation: 108.560 simulated seconds, zero missed commits,
-versus 117.638 for submitted commit 42a08af. Twenty-seven dependency tracing and selector regression tests cover
+Public sample validation: 103.993 simulated seconds, zero missed commits,
+versus 108.560 for dictionary-reader commit 8981c96. Thirty-six dependency tracing and selector regression tests cover
 replacement/insertion boundaries, mixed edits, missing maps and inherited flags.
 Literal negative numbers and containers use attribute readers; calls and invalid
 literal containers retain file users.
@@ -54,6 +54,16 @@ successful pristine run with those external-call guards enables this refinement;
 key additions, removals, reordering, unknown origins and mixed edits retain the
 previous fallback. The pinned source, tests, existing coverage, comparison types
 and class-schema dependency maps remain unchanged.
+
+A separate complete pristine run observes bounded immutable operands for equality
+and ordering comparisons. Comparison-only operator or literal-boundary edits can
+omit tests only where all observed primitive inputs produce the same comparison
+result. Every unknown, custom, non-finite, oversized, unsupported or overflow
+observation retains its test; mixed edits and incomplete or missing traces disable
+the proof. The collector records no patched execution, mutation failures or answer
+labels. Its 1,620 tests and 25,440 subtests passed, with one expected skip; all prior
+pristine dependency maps remain identical. Reproduce with
+`docker build -f Dockerfile.comparisons .`.
 
 Run: `docker run --rm --network none --read-only --user nobody -v DATA:/data:ro blast-radius`
 
