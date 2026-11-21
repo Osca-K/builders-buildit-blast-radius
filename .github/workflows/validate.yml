@@ -12,8 +12,12 @@ jobs:
         run: /usr/bin/time -v docker run --rm --network none --cpus 2 --memory 4g --memory-swap 4g --read-only --tmpfs /tmp:rw,size=64m --user nobody -e HOME=/tmp -v "$PWD/sample/tests.json:/data/tests.json:ro" -v "$PWD/sample/commits:/data/commits:ro" blast-radius > predictions.jsonl
       - name: Score sample only
         run: python score.py sample sample/answers.json predictions.jsonl
+      - name: Export pristine-source coverage map for local diagnostics
+        run: docker run --rm --network none --read-only --user nobody --entrypoint cat blast-radius /app/index.json.gz > index.json.gz
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sample-predictions
-          path: predictions.jsonl
+          path: |
+            predictions.jsonl
+            index.json.gz

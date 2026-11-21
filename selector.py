@@ -93,8 +93,14 @@ def choose(index,text):
                 functions=[(n.lineno,n.end_lineno) for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]
                 module_level=any(not any(a<=n<=b for a,b in functions) for n in ch['lines'])
             except SyntaxError: module_level=True
-        if not hit or module_level or not (old or '').endswith('.py'):
-            for p in paths: hit|=int(index['files'].get(p,'0'),16)
+        if module_level:
+            # Class flags and registries can be consumed by inherited code in
+            # other modules without executing a line in the defining module.
+            selected|=all_tests
+            continue
+        # A changed branch may newly affect callers which did not take that
+        # branch on the pristine checkout. Retain all observed file callers.
+        for p in paths: hit|=int(index['files'].get(p,'0'),16)
         if not hit: return all_tests
         selected|=hit
     return selected
