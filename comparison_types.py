@@ -21,7 +21,11 @@ def descriptor(value):
     cls = type(value)
     key = id(cls)
     if key in _types:
-        return _types[key]
+        result = _types[key]
+        if result.startswith('enum:'):
+            canonical = any(value is member for member in type.__getattribute__(cls, '__members__').values())
+            return ('enum-member:' if canonical else 'enum-other:') + result[5:]
+        return result
     eq = type.__getattribute__(cls, '__eq__')
     ne = type.__getattribute__(cls, '__ne__')
     if cls is type(None):
@@ -35,6 +39,9 @@ def descriptor(value):
     else:
         result = 'other'
     _types[key] = result
+    if result.startswith('enum:'):
+        canonical = any(value is member for member in type.__getattribute__(cls, '__members__').values())
+        return ('enum-member:' if canonical else 'enum-other:') + result[5:]
     return result
 
 def compare(location, op, left, right):

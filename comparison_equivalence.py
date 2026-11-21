@@ -8,8 +8,11 @@ def neutral_types(pair):
         return other in ('none','identity') or other.startswith(('builtin:','enum:'))
     if left==right=='identity':
         return True
-    # Primitive-backed enums can construct noncanonical equal-valued objects.
-    # Type observations alone do not prove their identity/equality equivalent.
+    if left==right and left.startswith('enum-member:'):
+        # Enum aliases resolve to the same canonical member object. Restricting
+        # this rule to observed canonical members excludes constructed str/int
+        # enum instances which can compare equal without being identical.
+        return True
     return False
 
 def equivalent_tests(before,after,index,path):
