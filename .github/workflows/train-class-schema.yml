@@ -7,9 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check schema tracing and selector safety
-        run: python -m unittest test_selector test_class_attributes
+        run: python -m unittest test_selector test_class_attributes test_dictionary_reads
       - name: Collect only from unmodified pinned source
-        run: timeout 600 docker build --progress plain -f Dockerfile.training -t blast-schema .
+        run: timeout 900 docker build --progress plain -f Dockerfile.schemas -t blast-schema .
       - name: Export generated pristine index
         run: docker run --rm --network none --read-only --user nobody --entrypoint cat blast-schema /app/index.json.gz > class-index.json.gz
       - name: Select public sample under runtime constraints

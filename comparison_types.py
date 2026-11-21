@@ -8,6 +8,7 @@ import enum
 import importlib.abc
 import importlib.machinery
 import operator
+import os
 from pathlib import Path
 import sys
 
@@ -54,6 +55,24 @@ class Rewrite(ast.NodeTransformer):
     def __init__(self, filename):
         self.filename = filename
         self.function = ''
+        self.classes = []
+    def visit_ClassDef(self, node):
+        self.classes.append(node.name)
+        self.generic_visit(node)
+        self.classes.pop()
+        return node
+    def visit_Assign(self, node):
+        self.generic_visit(node)
+        if (self.function or not self.classes or len(node.targets)!=1
+                or not isinstance(node.targets[0],ast.Name)):
+            return node
+        try:value=ast.literal_eval(node.value)
+        except (ValueError,TypeError,SyntaxError,RecursionError):return node
+        if type(value) is not dict or any(type(k) is not str for k in value):return node
+        origin=f'{self.filename}:{".".join(self.classes)}:{node.targets[0].id}'
+        node.value=ast.copy_location(ast.Call(func=ast.Name(id='_rwx_dict',ctx=ast.Load()),
+            args=[node.value,ast.Constant(origin)],keywords=[]),node.value)
+        return node
     def visit_FunctionDef(self, node):
         previous = self.function
         self.function = node.name
@@ -72,6 +91,7 @@ class Rewrite(ast.NodeTransformer):
             args=[node.value, ast.Constant(node.attr), ast.Constant(derived)], keywords=[]), node)
     def visit_Compare(self, node):
         self.generic_visit(node)
+        if os.environ.get('RWX_SCHEMA_ONLY')=='1':return node
         if len(node.ops) != 1 or type(node.ops[0]).__name__ not in _operators:
             return node
         location = f'{self.filename}:{node.lineno}:{node.col_offset}'
@@ -92,6 +112,7 @@ class Loader(importlib.machinery.SourceFileLoader):
             pos += 1
         tree.body.insert(pos, ast.ImportFrom(module='comparison_types', names=[ast.alias(name='compare', asname='_rwx_compare')], level=0))
         tree.body.insert(pos, ast.ImportFrom(module='class_attributes', names=[ast.alias(name='read', asname='_rwx_schema_read')], level=0))
+        tree.body.insert(pos, ast.ImportFrom(module='dictionary_reads', names=[ast.alias(name='track', asname='_rwx_dict')], level=0))
         return compile(ast.fix_missing_locations(tree), path, 'exec')
 
 class Finder(importlib.abc.MetaPathFinder):

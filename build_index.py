@@ -117,7 +117,9 @@ def instance_access(self,name):
 
 import comparison_types
 import class_attributes
+import dictionary_reads
 class_attributes.install(lambda: context)
+dictionary_reads.install(lambda: context)
 comparison_types.install(lambda: context)
 from sqlglot.dialects.dialect import Dialect, _Dialect
 from sqlglot.parser import Parser
@@ -222,6 +224,18 @@ for key,contexts in class_attributes.observations.items():
     if mask:class_masks[key]=format(mask,'x')
 result['class_attributes']=class_masks
 result['class_attribute_complete']=int(code)==0
+result['class_schema_paths']=[p for p in sources if p.startswith('sqlglot/expressions/')]
+dictionary_masks={}
+for origin,keys in dictionary_reads.observations.items():
+    output={}
+    for key,contexts in keys.items():
+        mask=0
+        for ctx in contexts:mask|=masks.get(ctx,0)
+        if mask:output[key]=format(mask,'x')
+    if output:dictionary_masks[origin]=output
+result['dictionary_reads']=dictionary_masks
+result['dictionary_origins']=sorted(dictionary_reads.origins)
+result['dictionary_reads_complete']=int(code)==0
 with gzip.open(os.environ.get('INDEX_OUTPUT','/app/index.json.gz'),'wt',encoding='utf-8') as f:
     json.dump(result,f,separators=(',',':'))
 print(f'Indexed {len(ids)} tests, {len(files)} files',file=sys.stderr)

@@ -82,6 +82,7 @@ class SelectionSafety(unittest.TestCase):
         index=self.index()
         index['sources']={'dialect.py':source}
         index['class_attribute_complete']=True
+        index['class_schema_paths']=['dialect.py']
         index['class_attributes']={'dialect.py:A:arg_types':'1','dialect.py:B:arg_types':'2'}
         patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
                                          fromfile='a/dialect.py',tofile='b/dialect.py'))
@@ -97,10 +98,53 @@ class SelectionSafety(unittest.TestCase):
         index=self.index()
         index['sources']={'dialect.py':source}
         index['class_attribute_complete']=True
+        index['class_schema_paths']=['dialect.py']
         index['class_attributes']={'dialect.py:Dialect:arg_types':'1'}
         patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
                                          fromfile='a/dialect.py',tofile='b/dialect.py'))
         self.assertEqual(choose(index,patch),3)
+
+    def test_expression_invalid_schema_keeps_importers(self):
+        source=SOURCE.replace('FLAG = True','arg_types = {"x": True}')
+        for value in ('1','[]','None','{"x": []}'):
+            changed=source.replace('{"x": True}',value)
+            index=self.index()
+            index['sources']={'dialect.py':source}
+            index['class_attribute_complete']=True
+            index['class_schema_paths']=['dialect.py']
+            index['class_attributes']={}
+            patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
+                                             fromfile='a/dialect.py',tofile='b/dialect.py'))
+            self.assertEqual(choose(index,patch),3)
+
+    def test_dictionary_value_change_selects_key_readers_and_bulk_readers(self):
+        source=SOURCE.replace('FLAG = True','FLAG = {"a": (1, 2), "b": 3}')
+        changed=source.replace('(1, 2)','(2, 2)')
+        index=self.index()
+        index['sources']={'dialect.py':source}
+        index['dictionary_reads_complete']=True
+        index['dictionary_origins']=['dialect.py:Dialect:FLAG']
+        index['dictionary_reads']={'dialect.py:Dialect:FLAG':{'key:"a"':'1','key:"b"':'2'}}
+        patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
+                                         fromfile='a/dialect.py',tofile='b/dialect.py'))
+        self.assertEqual(choose(index,patch),1)
+        index['dictionary_reads']['dialect.py:Dialect:FLAG']['*']='2'
+        self.assertEqual(choose(index,patch),3)
+        index['dictionary_reads']={}
+        self.assertEqual(choose(index,patch),0)
+
+    def test_dictionary_reorder_or_new_key_retains_attribute_fallback(self):
+        source=SOURCE.replace('FLAG = True','FLAG = {"a": 1, "b": 2}')
+        index=self.index()
+        index['sources']={'dialect.py':source}
+        index['dictionary_reads_complete']=True
+        index['dictionary_origins']=['dialect.py:Dialect:FLAG']
+        index['dictionary_reads']={}
+        for value in ('{"b": 3, "a": 1}','{"a": 3, "c": 2}'):
+            changed=source.replace('{"a": 1, "b": 2}',value)
+            patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
+                                             fromfile='a/dialect.py',tofile='b/dialect.py'))
+            self.assertEqual(choose(index,patch),1)
 
 if __name__ == '__main__':
     unittest.main()

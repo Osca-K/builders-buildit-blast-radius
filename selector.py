@@ -63,6 +63,12 @@ def changed_expression_schemas(before,after):
                             and isinstance(node.targets[0],ast.Name)
                             and node.targets[0].id=='arg_types'):
                         if qualname in found:return False
+                        # Other literal shapes can raise in __init_subclass__
+                        # during import, affecting tests without any schema read.
+                        try:value=ast.literal_eval(node.value)
+                        except (ValueError,TypeError,SyntaxError,RecursionError):return False
+                        if (type(value) is not dict or any(type(k) is not str or type(v) is not bool
+                                                          for k,v in value.items())):return False
                         found[qualname]=ast.dump(node.value)
                 if walk(cls.body,qualname+'.') is False:return False
             return True
@@ -70,6 +76,41 @@ def changed_expression_schemas(before,after):
     old,new=schemas(before),schemas(after)
     if old is None or new is None or old.keys()!=new.keys():return None
     return {name for name in old if old[name]!=new[name]}
+
+def changed_dictionary_values(before,after):
+    """Find value-only changes in literal class dictionaries with fixed keys."""
+    if not changed_class_constants(before,after):return None
+    def values(tree):
+        found={}
+        def walk(body,prefix=''):
+            for cls in body:
+                if not isinstance(cls,ast.ClassDef):continue
+                qualname=prefix+cls.name
+                for node in cls.body:
+                    if (isinstance(node,ast.Assign) and len(node.targets)==1
+                            and isinstance(node.targets[0],ast.Name)):
+                        try:value=ast.literal_eval(node.value)
+                        except (ValueError,TypeError,SyntaxError,RecursionError):continue
+                        key=(qualname,node.targets[0].id)
+                        if key in found:return False
+                        found[key]=(value,ast.dump(node.value))
+                if walk(cls.body,qualname+'.') is False:return False
+            return True
+        return found if walk(tree.body) else None
+    old,new=values(before),values(after)
+    if old is None or new is None or old.keys()!=new.keys():return None
+    changed={}
+    for key,(a,a_ast) in old.items():
+        b,b_ast=new[key]
+        if a_ast==b_ast:continue
+        if (key[1]=='arg_types' or type(a) is not dict or type(b) is not dict
+                or list(a)!=list(b) or any(type(k) is not str for k in a)):
+            return None
+        # Comparing literal values is side-effect-free, but Python equates some
+        # distinct types (True/1); repr retains those distinctions conservatively.
+        changed[key]=[k for k in a if repr(a[k])!=repr(b[k]) or type(a[k]) is not type(b[k])]
+        if not changed[key]:return None
+    return changed or None
 
 def path_name(value):
     value=value.split('\t',1)[0]
@@ -169,13 +210,30 @@ def choose(index,text):
             # their exact declaring class; a complete map can represent no reads.
             schemas=(changed_expression_schemas(before,after)
                      if before is not None and after is not None
-                     and index.get('class_attribute_complete') else None)
+                     and index.get('class_attribute_complete')
+                     and old in index.get('class_schema_paths',()) else None)
             if schemas:
                 users=0
                 for qualname in schemas:
                     users|=int(index.get('class_attributes',{}).get(f'{old}:{qualname}:arg_types','0'),16)
                 selected|=users&~neutral
                 continue
+            dictionaries=(changed_dictionary_values(before,after)
+                          if before is not None and after is not None
+                          and index.get('dictionary_reads_complete') else None)
+            if dictionaries:
+                origins={f'{old}:{qualname}:{name}':keys
+                         for (qualname,name),keys in dictionaries.items()}
+                if all(origin in index.get('dictionary_origins',()) for origin in origins):
+                    users=0
+                    for origin,keys in origins.items():
+                        reads=index.get('dictionary_reads',{}).get(origin,{})
+                        users|=int(reads.get('*','0'),16)
+                        for key in keys:
+                            token='key:'+json.dumps(key,ensure_ascii=True,separators=(',',':'))
+                            users|=int(reads.get(token,'0'),16)
+                    selected|=users&~neutral
+                    continue
             # Class constants are executed at import, so line coverage selects
             # every importer. Attribute tracing identifies the tests that
             # actually read the changed constant.
