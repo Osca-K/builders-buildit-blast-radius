@@ -1,9 +1,11 @@
 """Build-only value-read contexts for pristine literal class dictionaries."""
 import json
+import functools
 
 observations={}
 origins=set()
 context=lambda:''
+_json_wrapped=False
 
 
 def key_token(key):
@@ -96,6 +98,62 @@ def track(value,origin):
     return ObservedDict(value,origin)
 
 
+def base_method(owner,name):
+    # Explicit calls such as dict.__getitem__(observed,key) otherwise bypass
+    # subclass overrides. Any observed mapping passed to a base method is a
+    # conservative wildcard dependency.
+    function=getattr(owner,name)
+    @functools.wraps(function)
+    def wrapped(*args,**kwargs):
+        if owner is dict:
+            for value in (*args,*kwargs.values()):
+                if isinstance(value,ObservedDict):value.record()
+        return function(*args,**kwargs)
+    return wrapped
+
+
+def mark_serialized(value,seen=None):
+    if seen is None:seen=set()
+    if id(value) in seen:return
+    seen.add(id(value))
+    if isinstance(value,ObservedDict):value.record()
+    if isinstance(value,dict):
+        for child in dict.values(value):mark_serialized(child,seen)
+    elif isinstance(value,(list,tuple)):
+        for child in value:mark_serialized(child,seen)
+
+
+def call(function,*args,**kwargs):
+    """Observe dictionaries escaping to consumers outside instrumented Python."""
+    code=getattr(function,'__code__',None)
+    module=getattr(function,'__module__','') or ''
+    owner=getattr(function,'__self__',None)
+    pristine=(module in ('dictionary_reads','class_attributes')
+              or (code is not None and code.co_filename.startswith('/opt/sqlglot/'))
+              or (isinstance(function,type) and module.startswith(('sqlglot','tests'))))
+    if not pristine and not any(function is known for known in (len,bool,type,id,isinstance,issubclass)):
+        if isinstance(owner,ObservedDict):owner.record()
+        for value in args:mark_serialized(value)
+        for value in kwargs.values():mark_serialized(value)
+    return function(*args,**kwargs)
+
+
+def _serialized(function,method=False):
+    @functools.wraps(function)
+    def wrapped(*args,**kwargs):
+        position=1 if method else 0
+        value=args[position] if len(args)>position else kwargs.get('obj',kwargs.get('o'))
+        mark_serialized(value)
+        return function(*args,**kwargs)
+    return wrapped
+
+
 def install(get_context):
-    global context
+    global context,_json_wrapped
     context=get_context
+    if not _json_wrapped:
+        json.dump=_serialized(json.dump)
+        json.dumps=_serialized(json.dumps)
+        json.JSONEncoder.encode=_serialized(json.JSONEncoder.encode,method=True)
+        json.JSONEncoder.iterencode=_serialized(json.JSONEncoder.iterencode,method=True)
+        _json_wrapped=True

@@ -80,6 +80,19 @@ class Rewrite(ast.NodeTransformer):
         self.function = previous
         return node
     visit_AsyncFunctionDef = visit_FunctionDef
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        # Frame-sensitive builtins must remain in their original caller frame.
+        if isinstance(node.func,ast.Name) and node.func.id in {
+                'super','locals','globals','vars','dir','eval','exec','breakpoint'}:
+            return node
+        if (isinstance(node.func,ast.Attribute) and isinstance(node.func.value,ast.Name)
+                and node.func.value.id=='dict'):
+            node.func=ast.copy_location(ast.Call(func=ast.Name(id='_rwx_dict_method',ctx=ast.Load()),
+                args=[node.func.value,ast.Constant(node.func.attr)],keywords=[]),node.func)
+        node=ast.copy_location(ast.Call(func=ast.Name(id='_rwx_guard_call',ctx=ast.Load()),
+            args=[node.func,*node.args],keywords=node.keywords),node)
+        return node
     def visit_Attribute(self, node):
         self.generic_visit(node)
         if not isinstance(node.ctx, ast.Load) or node.attr not in ('arg_types', 'required_args'):
@@ -112,7 +125,7 @@ class Loader(importlib.machinery.SourceFileLoader):
             pos += 1
         tree.body.insert(pos, ast.ImportFrom(module='comparison_types', names=[ast.alias(name='compare', asname='_rwx_compare')], level=0))
         tree.body.insert(pos, ast.ImportFrom(module='class_attributes', names=[ast.alias(name='read', asname='_rwx_schema_read')], level=0))
-        tree.body.insert(pos, ast.ImportFrom(module='dictionary_reads', names=[ast.alias(name='track', asname='_rwx_dict')], level=0))
+        tree.body.insert(pos, ast.ImportFrom(module='dictionary_reads', names=[ast.alias(name='track', asname='_rwx_dict'),ast.alias(name='base_method',asname='_rwx_dict_method'),ast.alias(name='call',asname='_rwx_guard_call')], level=0))
         return compile(ast.fix_missing_locations(tree), path, 'exec')
 
 class Finder(importlib.abc.MetaPathFinder):

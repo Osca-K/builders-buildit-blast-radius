@@ -29,7 +29,8 @@ class SchemaTracing(unittest.TestCase):
     def test_rewrite_preserves_attribute_values_and_assignment_targets(self):
         base=type('Base',(),{'__module__':'sqlglot.expressions.example','arg_types':{'x':True}})
         tree=Rewrite('sqlglot/example.py').visit(ast.parse('result = obj.arg_types\nobj.required_args = {"x"}\n'))
-        namespace={'obj':base,'_rwx_schema_read':class_attributes.read}
+        import dictionary_reads
+        namespace={'obj':base,'_rwx_schema_read':class_attributes.read,'_rwx_guard_call':dictionary_reads.call}
         exec(compile(ast.fix_missing_locations(tree),'<schema-test>','exec'),namespace)
         self.assertIs(namespace['result'],base.arg_types)
         self.assertEqual(base.required_args,{'x'})

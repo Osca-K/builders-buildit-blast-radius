@@ -123,6 +123,7 @@ class SelectionSafety(unittest.TestCase):
         index=self.index()
         index['sources']={'dialect.py':source}
         index['dictionary_reads_complete']=True
+        index['dictionary_external_calls_traced']=True
         index['dictionary_origins']=['dialect.py:Dialect:FLAG']
         index['dictionary_reads']={'dialect.py:Dialect:FLAG':{'key:"a"':'1','key:"b"':'2'}}
         patch=''.join(difflib.unified_diff(source.splitlines(True),changed.splitlines(True),
@@ -138,6 +139,7 @@ class SelectionSafety(unittest.TestCase):
         index=self.index()
         index['sources']={'dialect.py':source}
         index['dictionary_reads_complete']=True
+        index['dictionary_external_calls_traced']=True
         index['dictionary_origins']=['dialect.py:Dialect:FLAG']
         index['dictionary_reads']={}
         for value in ('{"b": 3, "a": 1}','{"a": 3, "c": 2}'):

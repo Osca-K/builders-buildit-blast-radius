@@ -220,7 +220,8 @@ def choose(index,text):
                 continue
             dictionaries=(changed_dictionary_values(before,after)
                           if before is not None and after is not None
-                          and index.get('dictionary_reads_complete') else None)
+                          and index.get('dictionary_reads_complete')
+                          and index.get('dictionary_external_calls_traced') else None)
             if dictionaries:
                 origins={f'{old}:{qualname}:{name}':keys
                          for (qualname,name),keys in dictionaries.items()}

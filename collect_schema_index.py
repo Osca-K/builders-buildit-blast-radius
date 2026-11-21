@@ -86,6 +86,7 @@ index['dictionary_reads']={origin:{key:context_mask(contexts) for key,contexts i
                            for origin,keys in dictionary_reads.observations.items()}
 index['dictionary_origins']=sorted(dictionary_reads.origins)
 index['dictionary_reads_complete']=complete
+index['dictionary_external_calls_traced']=complete
 index['schema_collection_exit_code']=int(code)
 with gzip.open('/app/index.json.gz','wt',encoding='utf-8') as handle:json.dump(index,handle,separators=(',',':'))
 print(f'Pristine schema collection complete={complete}, tests={len(ids)}, class declarations={len(index["class_attributes"])}, dictionaries={len(index["dictionary_origins"])}',file=sys.stderr)
