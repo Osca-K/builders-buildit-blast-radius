@@ -36,7 +36,7 @@ os.chdir(ROOT)
 sys.path.insert(0,str(ROOT))
 os.environ['SKIP_INTEGRATION']='0'
 cov=coverage.Coverage(source=[str(ROOT/'sqlglot'),str(ROOT/'tests')],config_file=False,data_file=None)
-ids=[]; owners={}; fixtures={}; accesses={}; context=''
+ids=[]; owners={}; fixtures={}; accesses={}; attribute_accesses={}; context=''
 
 def rel(path):
     try: return Path(path).resolve().relative_to(ROOT).as_posix()
@@ -91,6 +91,14 @@ def record_receiver(cls):
     receiver_paths[receiver_id]=path
     if path: accesses.setdefault(path,set()).add(context)
 
+def record_attribute(cls,name):
+    if not context or not (name.isupper() or name=='arg_types'): return
+    receiver_id=id(cls)
+    if receiver_id not in receiver_paths:
+        record_receiver(cls)
+    path=receiver_paths.get(receiver_id)
+    if path: attribute_accesses.setdefault(path+':'+name,set()).add(context)
+
 def record_operation(fn):
     @functools.wraps(fn)
     def wrapped(self,*args,**kwargs):
@@ -100,7 +108,12 @@ def record_operation(fn):
 
 def class_access(cls,name):
     record_receiver(cls)
+    record_attribute(cls,name)
     return type.__getattribute__(cls,name)
+
+def instance_access(self,name):
+    record_attribute(type(self),name)
+    return object.__getattribute__(self,name)
 
 import comparison_types
 comparison_types.install(lambda: context)
@@ -114,6 +127,7 @@ for base in (Dialect,Parser,Generator,Tokenizer):
     for name in ('__init__','parse','parse_into','generate','tokenize'):
         fn=vars(base).get(name)
         if isinstance(fn,types.FunctionType):setattr(base,name,record_operation(fn))
+    base.__getattribute__=instance_access
 get_or_raise=vars(Dialect)['get_or_raise'].__func__
 @functools.wraps(get_or_raise)
 def recorded_dialect(cls,*args,**kwargs):
@@ -182,6 +196,14 @@ for p in ROOT.rglob('*.py'):
 result={'tests':ids,'lines':lines,'files':{p:format(m,'x') for p,m in files.items()},
         'owners':{p:format(m,'x') for p,m in owner_masks.items()},'sources':sources,
         'base_exit_code':int(code),'base_commit':'eb11aec4be8cb2122afe713a4816662c3f0fb2fa'}
+attribute_masks={}
+for key,contexts in attribute_accesses.items():
+    mask=0
+    for ctx in contexts:mask|=masks.get(ctx,0)
+    if mask:attribute_masks[key]=format(mask,'x')
+result['attributes']=attribute_masks
+from attribute_owners import expand
+expand(result)
 type_masks={}
 for location,pairs in comparison_types.observations.items():
     output={}

@@ -9,6 +9,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Check replacement, insertion and mixed-edit selection
+        run: python test_selector.py
       - name: Build selector with reproducible pristine-source coverage index
         run: timeout 600 docker build -t blast-radius .
       - name: Select public sample tests under scorer limits

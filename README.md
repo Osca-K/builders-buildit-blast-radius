@@ -18,15 +18,20 @@ eb11aec4be8cb2122afe713a4816662c3f0fb2fa. Reproduce it with
 `docker build -f Dockerfile.training -t blast-radius-training .`.
 The training run passed 1,620 tests and 25,440 subtests, with one expected skip.
 Receiver contexts record inherited dialect flags as well as executed lines.
-Changed functions select all observed callers of the smallest enclosing function;
-module and class edits select the recorded file users.
+Changed statements select observed line users and enclosing expression headers;
+uncovered statements fall back to the enclosing function. Replacement additions
+map to the removed lines; pure insertions include both adjacent old lines.
+Mixed class/method edits retain file users. Scalar class-value-only edits can use
+attribute readers, expanded to inherited declaration modules from pristine classes.
 
 The current index also records operand-type observations from the unmodified test
 suite. When a patch only changes `is`/`is not` to `==`/`!=`, tests are removed
 only where every observation at that exact source location proves the comparison
 equivalent. Missing, custom, or conflicting types retain the test.
 
-Public sample validation: 166.156 simulated seconds, zero missed commits.
+Public sample validation: 134.695 simulated seconds, zero missed commits,
+versus 144.829 for submitted commit 6f29d06. Nine selector regression tests cover
+replacement/insertion boundaries, mixed edits, missing maps and inherited flags.
 Sample answers remain outside the runtime image. Hidden-set performance is
 measured separately by the competition scorer.
 

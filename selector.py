@@ -7,9 +7,40 @@ import os
 from pathlib import Path
 import re
 import sys
+import copy
+from functools import lru_cache
 from comparison_equivalence import equivalent_tests
 
 HUNK=re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+
+@lru_cache(maxsize=128)
+def source_tree(source):
+    return ast.parse(source)
+
+def changed_class_constants(before,after):
+    """Only prune attribute users when every AST edit is a scalar class value."""
+    names=set()
+    def normalize(tree):
+        tree=copy.deepcopy(tree)
+        for cls in ast.walk(tree):
+            if not isinstance(cls,ast.ClassDef): continue
+            for node in cls.body:
+                if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and isinstance(node.value,ast.Constant):
+                    names.add(node.targets[0].id)
+                    node.value=ast.Constant(value=None)
+        return ast.dump(tree)
+    if normalize(before)!=normalize(after): return set()
+    # Keep only actual changes; unchanged class attributes must not broaden the map.
+    old={}
+    for node in ast.walk(before):
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            old[(node.lineno,node.targets[0].id)]=ast.dump(node.value)
+    changed=set()
+    for node in ast.walk(after):
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            name=node.targets[0].id
+            if name in names and old.get((node.lineno,name))!=ast.dump(node.value): changed.add(name)
+    return changed
 
 def path_name(value):
     value=value.split('\t',1)[0]
@@ -19,21 +50,27 @@ def path_name(value):
     return value[2:] if value.startswith(('a/','b/')) else value
 
 def diff(text):
-    changes=[];current=None;hunk=None;old=0;remaining_old=remaining_new=0
+    changes=[];current=None;hunk=None;old=0;remaining_old=remaining_new=0;replacing=False
     for line in text.splitlines():
         m=HUNK.match(line)
         if m:
             if current is None: raise ValueError('hunk without file')
             old=int(m[1]);remaining_old=int(m[2] if m[2] is not None else 1);remaining_new=int(m[4] if m[4] is not None else 1)
-            hunk={'start':old,'count':remaining_old,'body':[]};current['hunks'].append(hunk)
+            hunk={'start':old,'count':remaining_old,'body':[]};current['hunks'].append(hunk);replacing=False
+            if remaining_old==0: old+=1  # A zero-length hunk inserts after its old start.
             continue
         if remaining_old or remaining_new:
             if line.startswith('\\'): continue
             if not line or line[0] not in ' +-': raise ValueError('bad hunk body')
             hunk['body'].append(line)
-            if line[0]=='-': current['lines'].add(old);old+=1;remaining_old-=1
-            elif line[0]=='+': current['lines'].update((max(1,old-1),old));remaining_new-=1
-            else: old+=1;remaining_old-=1;remaining_new-=1
+            if line[0]=='-': current['lines'].add(old);old+=1;remaining_old-=1;replacing=True
+            elif line[0]=='+':
+                # Replacement additions correspond to the removed old lines.
+                # Mapping them to the next untouched line can select an unrelated
+                # function or trigger a module-wide fallback at function end.
+                if not replacing: current['lines'].update((max(1,old-1),old))
+                remaining_new-=1
+            else: old+=1;remaining_old-=1;remaining_new-=1;replacing=False
             continue
         if line.startswith('diff --git '):
             current={'old':None,'new':None,'lines':set(),'hunks':[]};changes.append(current)
@@ -70,9 +107,10 @@ def choose(index,text):
         if not paths: return all_tests
         source=index['sources'].get(old)
         neutral=0
+        before=after=None
         if old==new and source is not None and ch['hunks']:
             try:
-                before=ast.parse(source);after=ast.parse(patched(source,ch))
+                before=source_tree(source);after=ast.parse(patched(source,ch))
                 if ast.dump(before)==ast.dump(after): continue
                 neutral=equivalent_tests(before,after,index,old)
             except SyntaxError:
@@ -92,32 +130,64 @@ def choose(index,text):
         module_level=False
         if source and old and old.endswith('.py'):
             try:
-                tree=ast.parse(source)
+                tree=source_tree(source)
                 functions=[(n.lineno,n.end_lineno) for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]
                 module_level=any(not any(a<=n<=b for a,b in functions) for n in ch['lines'])
             except SyntaxError: module_level=True
         if module_level:
+            # Class constants are executed at import, so line coverage selects
+            # every importer. Attribute tracing identifies the tests that
+            # actually read the changed constant.
+            attribute_mask=0
+            if source and old:
+                for node in ast.walk(tree):
+                    if not isinstance(node,(ast.Assign,ast.AnnAssign)) or not hasattr(node,'end_lineno'):
+                        continue
+                    if not any(node.lineno<=n<=node.end_lineno for n in ch['lines']):
+                        continue
+                    targets=node.targets if isinstance(node,ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target,ast.Name):
+                            attribute_mask|=int(index.get('attributes',{}).get(f'{old}:{target.id}','0'),16)
+            constant_names=changed_class_constants(before,after) if before is not None and after is not None and index.get('attribute_declarations') else set()
+            complete=constant_names and all(index.get('attributes',{}).get(f'{old}:{name}') for name in constant_names)
+            if attribute_mask and complete:
+                selected|=attribute_mask&~neutral
+                continue
             # The pristine build records actual dialect/parser/generator
             # receiver modules, including inherited class-flag accesses.
             users=0
             for p in paths: users|=int(index['files'].get(p,'0'),16)
             selected|=(users or all_tests)&~neutral
             continue
-        # A changed branch may newly affect callers which did not take that
-        # branch on the pristine checkout. Retain its enclosing function users.
-
+        # Coverage attributes a multiline expression to its statement header.
+        # Include that header, but not every unrelated branch in the function.
         if source and old and old.endswith('.py'):
-            tree = ast.parse(source)
-            funcs = [node for node in ast.walk(tree) if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))]
+            tree=source_tree(source)
+            headers=(ast.If,ast.While,ast.IfExp,ast.BoolOp,ast.Compare,ast.Call,
+                     ast.Assign,ast.AnnAssign,ast.Return)
+            nodes=[node for node in ast.walk(tree) if isinstance(node,headers) and hasattr(node,'end_lineno')]
             for n in ch['lines']:
-                enclosing = [node for node in funcs if node.lineno <= n <= node.end_lineno]
-                if enclosing:
-                    node = min(enclosing,key=lambda node: node.end_lineno-node.lineno)
+                boolean=[node for node in nodes if isinstance(node,ast.BoolOp) and node.lineno<=n<=node.end_lineno]
+                if boolean:
+                    node=min(boolean,key=lambda node:node.end_lineno-node.lineno)
                     for line in range(node.lineno,node.end_lineno+1):
-                        hit |= int(lm.get(str(line),'0'),16)
+                        hit|=int(lm.get(str(line),'0'),16)
+                enclosing=[node for node in nodes if node.lineno<=n<=node.end_lineno]
+                if enclosing:
+                    node=min(enclosing,key=lambda node:node.end_lineno-node.lineno)
+                    hit|=int(lm.get(str(node.lineno),'0'),16)
         else:
             for p in paths: hit |= int(index['files'].get(p,'0'),16)
 
+        if not hit and source and old and old.endswith('.py'):
+            funcs=[node for node in ast.walk(tree) if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))]
+            for n in ch['lines']:
+                enclosing=[node for node in funcs if node.lineno<=n<=node.end_lineno]
+                if enclosing:
+                    node=min(enclosing,key=lambda node:node.end_lineno-node.lineno)
+                    for line in range(node.lineno,node.end_lineno+1):
+                        hit|=int(lm.get(str(line),'0'),16)
         if not hit: return all_tests
         selected|=hit&~neutral
     return selected
